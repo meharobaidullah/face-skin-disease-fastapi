@@ -4,6 +4,7 @@ import numpy as np
 from tensorflow.keras.models import load_model
 from PIL import Image
 import io
+from typing import List
 
 # --------------------
 # Load model once
@@ -20,11 +21,10 @@ class_indices = {
     'Eczemaa': 3,
     'Rosacea': 4
 }
-
 index_to_class = {v: k for k, v in class_indices.items()}
 
-# Get model input size
-_, height, width, channels = model.input_shape
+# Model input shape
+_, height, width, _ = model.input_shape
 
 # --------------------
 # FastAPI app
@@ -32,33 +32,31 @@ _, height, width, channels = model.input_shape
 app = FastAPI(title="Skin Disease Classification API")
 
 # --------------------
-# Image preprocessing
+# Preprocess image
 # --------------------
 def preprocess_image(image_bytes):
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     image = image.resize((width, height))
-
-    img_array = np.array(image, dtype=np.float32)
-    img_array = img_array / 255.0  # same normalization as training
-    img_array = np.expand_dims(img_array, axis=0)
-
+    img_array = np.array(image, dtype=np.float32) / 255.0
     return img_array
 
 # --------------------
-# Prediction endpoint
+# Single image prediction
 # --------------------
-@app.post("/predict")
-async def predict(file: UploadFile = File(...)):
+@app.post("/predict/single")
+async def predict_single(file: UploadFile = File(...)):
     try:
         image_bytes = await file.read()
         img = preprocess_image(image_bytes)
+
+        # Add batch dimension
+        img = np.expand_dims(img, axis=0)
 
         predictions = model.predict(img)
         predicted_index = int(np.argmax(predictions, axis=1)[0])
         predicted_class = index_to_class[predicted_index]
         confidence = float(predictions[0][predicted_index])
 
-        # All class probabilities
         probabilities = {
             index_to_class[i]: float(predictions[0][i])
             for i in range(len(predictions[0]))
@@ -66,6 +64,52 @@ async def predict(file: UploadFile = File(...)):
 
         return JSONResponse({
             "predicted_class": predicted_class,
+            "confidence": confidence,
+            "probabilities": probabilities
+        })
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+# --------------------
+# Batch image prediction
+# --------------------
+@app.post("/predict/batch")
+async def predict_batch(files: List[UploadFile] = File(...)):
+    if len(files) == 0:
+        return JSONResponse(status_code=400, content={"error": "No images uploaded"})
+
+    try:
+        images = []
+
+        for file in files:
+            image_bytes = await file.read()
+            img = preprocess_image(image_bytes)
+            images.append(img)
+
+        # Shape: (N, height, width, 3)
+        batch = np.stack(images, axis=0)
+
+        predictions = model.predict(batch)  # (N, 5)
+
+        # Average probabilities across images
+        avg_probabilities = np.mean(predictions, axis=0)
+
+        predicted_index = int(np.argmax(avg_probabilities))
+        predicted_class = index_to_class[predicted_index]
+        confidence = float(avg_probabilities[predicted_index])
+
+        probabilities = {
+            index_to_class[i]: float(avg_probabilities[i])
+            for i in range(len(avg_probabilities))
+        }
+
+        return JSONResponse({
+            "num_images": len(files),
+            "final_prediction": predicted_class,
             "confidence": confidence,
             "probabilities": probabilities
         })
