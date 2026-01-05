@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 from tensorflow.keras.models import load_model
 from PIL import Image
@@ -30,6 +31,14 @@ _, height, width, _ = model.input_shape
 # FastAPI app
 # --------------------
 app = FastAPI(title="Skin Disease Classification API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --------------------
 # Preprocess image
