@@ -14,6 +14,7 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.applications.resnet import preprocess_input
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -156,8 +157,16 @@ def _preprocess_image_bytes(file_bytes: bytes) -> np.ndarray:
     try:
         with Image.open(io.BytesIO(file_bytes)) as image:
             image = image.convert("RGB")
-            image = image.resize((image_width, image_height))
-            image_array = np.asarray(image, dtype=np.float32) / 255.0
+            image = image.resize(
+                (image_width, image_height),
+                Image.Resampling.LANCZOS
+            )
+
+            image_array = np.asarray(image, dtype=np.float32)
+
+            # IMPORTANT
+            image_array = preprocess_input(image_array)
+
     except (UnidentifiedImageError, OSError, ValueError) as exc:
         _raise_http_error(415, f"Invalid image data: {exc}")
 
