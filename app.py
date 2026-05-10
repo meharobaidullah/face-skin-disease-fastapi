@@ -189,8 +189,11 @@ app = FastAPI(title="Skin Disease Classification API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=[
+        "https://face-skin-disease-frontend.devfuze.workers.dev",
+        "http://localhost.*",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
